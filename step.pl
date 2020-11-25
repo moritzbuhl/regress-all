@@ -1,6 +1,6 @@
 #!/usr/bin/perl
 
-# Copyright (c) 2018-2019 Alexander Bluhm <bluhm@genua.de>
+# Copyright (c) 2018-2020 Alexander Bluhm <bluhm@genua.de>
 #
 # Permission to use, copy, modify, and distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -161,7 +161,9 @@ setup_html();
 
 my @steps;
 if ($unit eq "commit") {
-    @steps = get_commits($begin, $end);
+    my %times;
+    @times{(get_commits($begin, $end), get_quirks($begin, $end))} = ();
+    @steps = sort keys %times;
     unshift @steps, $begin unless @steps && $steps[0] == $begin;
     push @steps, $end unless $steps[-1] == $end;
 } else {
@@ -175,7 +177,6 @@ if ($unit eq "commit") {
 }
 
 foreach my $current (@steps) {
-
     chdir($performdir)
 	or die "Chdir to '$performdir' failed: $!";
 
@@ -276,6 +277,13 @@ sub get_commits {
 	push @steps, $time;
     }
     return @steps;
+}
+
+sub get_quirks {
+    my ($before, $after) = map { strftime("%FT%TZ", gmtime($_)) } @_;
+
+    my %q = quirks($before, $after);
+    return map { $q{$_}{commit} } sort keys %q;
 }
 
 sub add_step {
