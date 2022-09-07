@@ -25,7 +25,7 @@ use POSIX;
 use Time::HiRes;
 
 my @alltests = sort qw(all fragment icmp ipopts pathmtu tcp udp);
-my @allpseudodevs = sort qw(aggr bridge carp trunk veb vlan);
+my @allpseudodevs = sort qw(aggr bridge carp trunk tun veb vlan);
 my @allifs = sort qw(em igc ix ixl);
 
 my %opts;
@@ -188,7 +188,7 @@ mysystem('ssh', $lnx_r_ssh, 'ip', 'addr', 'del', $lnx_r_net6, 'dev',
     $lnx_r_if);
 
 # configure given interface type
-if ($pseudodev eq 'bridge' || !$pseudodev) {
+if ($pseudodev eq 'bridge' || $pseudodev eq 'tun' || !$pseudodev) {
     if ($ipv4) {
 	mysystem('ifconfig', $obsd_l_if, 'inet', "${obsd_l_addr}/24");
 	mysystem('ifconfig', $obsd_r_if, 'inet', "${obsd_r_addr}/24");
@@ -252,6 +252,24 @@ if ($pseudodev eq 'aggr') {
     # XXX
 } elsif ($pseudodev eq 'trunk') {
     # XXX
+} elsif ($pseudodev eq 'tun') {
+    mysystem('ssh', $lnx_l_ssh, 'ip', 'link', 'add', 'name', 'br0',
+	'type', 'bridge');
+    mysystem('ssh', $lnx_l_ssh, 'ip', 'tuntap', 'add', 'mode', 'tun',
+	'dev', 'tun0');
+    mysystem('ssh', $lnx_l_ssh, 'ip', 'tuntap', 'add', 'mode', 'tun',
+	'dev', 'tun1');
+
+    mysystem('ssh', $lnx_l_ssh, 'ip', 'link', 'set', 'br0', 'up');
+    mysystem('ssh', $lnx_l_ssh, 'ip', 'link', 'set', $lnx_l_if, 'master',
+	'br0');
+    mysystem('ssh', $lnx_l_ssh, 'ip', 'link', 'set', 'tun1', 'master', 'br0');
+
+    mysystem(@sshcmd, 'ip', 'link', 'set', 'dev', 'tun1', 'up');
+    mysystem(@sshcmd, 'ip', 'link', 'set', 'dev', $lnx_l_if, 'up');
+    $lnx_l_if = 'tun0';
+
+    mysystem('ssh', '-f', $lnx_l_ssh, 'tun', '/dev/tun0', '/dev/tun1');
 } elsif ($pseudodev eq 'veb') {
     mysystem('ifconfig', 'veb0', 'create');
     mysystem('ifconfig', 'vport0', 'create');
