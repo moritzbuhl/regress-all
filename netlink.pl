@@ -168,6 +168,9 @@ foreach my $ifn (@allinterfaces) {
     mysystem('ifconfig', $ifn, 'destroy') if ($ifn =~ m{^($pdevre)});
 }
 
+# XXX:
+mysystem('ssh', $lnx_l_ssh, 'pkill', 'tun');
+
 # unconfigure linux interfaces
 mysystem('ssh', $lnx_l_ssh, 'ip', 'addr', 'del', $lnx_l_net, 'dev',
     $lnx_l_pdev);
@@ -178,6 +181,7 @@ mysystem('ssh', $lnx_l_ssh, 'ip', 'addr', 'del', $lnx_l_net, 'dev',
 mysystem('ssh', $lnx_l_ssh, 'ip', 'addr', 'del', $lnx_l_net6, 'dev',
     $lnx_l_if);
 
+mysystem('ssh', $lnx_l_ssh, 'ip', 'netns', 'del', 'posttun');
 mysystem('ssh', $lnx_r_ssh, 'ip', 'addr', 'del', $lnx_r_net, 'dev',
     $lnx_r_pdev);
 mysystem('ssh', $lnx_r_ssh, 'ip', 'addr', 'del', $lnx_r_net6, 'dev',
@@ -186,6 +190,12 @@ mysystem('ssh', $lnx_r_ssh, 'ip', 'addr', 'del', $lnx_r_net, 'dev',
     $lnx_r_if);
 mysystem('ssh', $lnx_r_ssh, 'ip', 'addr', 'del', $lnx_r_net6, 'dev',
     $lnx_r_if);
+mysystem('ssh', $lnx_l_ssh, 'ip', 'link', 'del', 'br0', 'type',
+    'bridge');
+mysystem('ssh', $lnx_l_ssh, 'ip', 'tuntap', 'del', 'mode', 'tun', 'dev',
+    'tun0');
+mysystem('ssh', $lnx_l_ssh, 'ip', 'tuntap', 'del', 'mode', 'tun', 'dev',
+    'tun1');
 
 # configure given interface type
 if ($pseudodev eq 'bridge' || $pseudodev eq 'tun' || !$pseudodev) {
@@ -253,23 +263,70 @@ if ($pseudodev eq 'aggr') {
 } elsif ($pseudodev eq 'trunk') {
     # XXX
 } elsif ($pseudodev eq 'tun') {
-    mysystem('ssh', $lnx_l_ssh, 'ip', 'link', 'add', 'name', 'br0',
-	'type', 'bridge');
-    mysystem('ssh', $lnx_l_ssh, 'ip', 'tuntap', 'add', 'mode', 'tun',
-	'dev', 'tun0');
-    mysystem('ssh', $lnx_l_ssh, 'ip', 'tuntap', 'add', 'mode', 'tun',
-	'dev', 'tun1');
+    mysystem('ssh', $lnx_l_ssh, 'ip', 'netns', 'add', 'posttun');
 
-    mysystem('ssh', $lnx_l_ssh, 'ip', 'link', 'set', 'br0', 'up');
-    mysystem('ssh', $lnx_l_ssh, 'ip', 'link', 'set', $lnx_l_if, 'master',
-	'br0');
-    mysystem('ssh', $lnx_l_ssh, 'ip', 'link', 'set', 'tun1', 'master', 'br0');
+    mysystem('ssh', $lnx_l_ssh, 'ip', 'tuntap', 'add', 'tun0', 'mode', 'tun');
+    mysystem('ssh', $lnx_l_ssh, 'ip', '-n', 'posttun', 'tuntap', 'add',
+	'tun1', 'mode', 'tun');
 
-    mysystem(@sshcmd, 'ip', 'link', 'set', 'dev', 'tun1', 'up');
-    mysystem(@sshcmd, 'ip', 'link', 'set', 'dev', $lnx_l_if, 'up');
+    if ($ipv4) {
+	mysystem('ssh', $lnx_l_ssh, 'ip', '-n', 'posttun', 'addr', 'add',
+	    "${lnx_l_addr}1/32", 'dev', 'tun1');
+    }
+    if ($ipv6) {
+	mysystem('ssh', $lnx_l_ssh, 'ip', '-n', 'posttun', 'addr', 'add',
+	    "${lnx_l_addr6}1/64", 'dev', 'tun1');
+    }
+    mysystem('ssh', $lnx_l_ssh, 'ip', '-n', 'posttun', 'link', 'set', 'dev',
+	'tun1', 'up');
+    mysystem('ssh', $lnx_l_ssh, 'ip', '-n', 'posttun', 'link', 'set', 'dev',
+	$lnx_l_if, 'up');
+
+    $configure_linux = 0;
+    if ($ipv4) {
+	mysystem('ssh', $lnx_l_ssh, 'ip', 'link', 'set', $lnx_l_if, 'netns',
+	    'posttun');
+	my @sshcmd = ('ssh', $lnx_l_ssh, 'ip', 'netns', 'exec', 'posttun');
+	mysystem(@sshcmd, 'ip', 'addr', 'add', $lnx_l_net, 'dev', $lnx_l_if);
+	mysystem(@sshcmd, 'ip', 'link', 'set', 'dev', $lnx_l_if, 'up');
+	mysystem(@sshcmd, 'route', 'add', '-net', $obsd_r_net, 'gw',
+	    $obsd_l_addr, 'netmask', '255.255.255.0', "$lnx_l_if");
+
+	@sshcmd = ('ssh', $lnx_r_ssh);
+	mysystem(@sshcmd, 'ip', 'addr', 'add', $lnx_l_net, 'dev', $lnx_l_if);
+	mysystem(@sshcmd, 'ip', 'addr', 'add', $lnx_r_net, 'dev', $lnx_r_if);
+	mysystem(@sshcmd, 'ip', 'link', 'set', 'dev', $lnx_r_if, 'up');
+	mysystem(@sshcmd, 'route', 'add', '-net', $obsd_l_net, 'gw',
+	    $obsd_r_addr, 'netmask', '255.255.255.0', "$lnx_r_if");
+    }
+    if ($ipv6) {
+	my @sshcmd = ('ssh', $lnx_l_ssh, 'ip', 'netns', 'exec', 'posttun');
+	mysystem(@sshcmd, 'ip', 'addr', 'add', $lnx_l_net6, 'dev', $lnx_l_if);
+	mysystem(@sshcmd, 'route', '-6', 'add', $obsd_r_net6, 'gw',
+	    $obsd_l_addr6, $lnx_l_if);
+
+	@sshcmd = ('ssh', $lnx_r_ssh);
+	mysystem(@sshcmd, 'ip', 'addr', 'add', $lnx_r_net6, 'dev', $lnx_r_if);
+	mysystem(@sshcmd, 'route', '-6', 'add', $obsd_l_net6, 'gw',
+	    $obsd_r_addr6, $lnx_r_if);
+    }
+
     $lnx_l_if = 'tun0';
+    if ($ipv4) {
+	my @sshcmd = ('ssh', $lnx_l_ssh);
+	mysystem(@sshcmd, 'ip', 'addr', 'add', $lnx_l_net, 'dev', $lnx_l_if);
+	mysystem(@sshcmd, 'ip', 'link', 'set', 'dev', $lnx_l_if, 'up');
+	mysystem(@sshcmd, 'route', 'add', '-net', $obsd_r_net, 'gw',
+	    $obsd_l_addr, 'netmask', '255.255.255.0', "$lnx_l_if");
+    }
+    if ($ipv6) {
+	my @sshcmd = ('ssh', $lnx_l_ssh);
+	mysystem(@sshcmd, 'ip', 'addr', 'add', $lnx_l_net6, 'dev', $lnx_l_if);
+	mysystem(@sshcmd, 'route', '-6', 'add', $obsd_r_net6, 'gw',
+	    $obsd_l_addr6, $lnx_l_if);
+    }
 
-    mysystem('ssh', '-f', $lnx_l_ssh, 'tun', '/dev/tun0', '/dev/tun1');
+    mysystem('ssh', '-f', $lnx_l_ssh, 'tun', 'tun0', 'tun1');
 } elsif ($pseudodev eq 'veb') {
     mysystem('ifconfig', 'veb0', 'create');
     mysystem('ifconfig', 'vport0', 'create');
