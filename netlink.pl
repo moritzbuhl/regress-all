@@ -188,6 +188,11 @@ mysystem('ssh', $lnx_r_ssh, 'ip', 'addr', 'del', $lnx_r_net, 'dev',
 mysystem('ssh', $lnx_r_ssh, 'ip', 'addr', 'del', $lnx_r_net6, 'dev',
     $lnx_r_if);
 
+# Sometimes neighbor discovery packets are prepended with a vlan id
+# if the linux machines have the pseudo device up.
+mysystem('ssh', $lnx_l_ssh, 'ip', 'link', 'set', $lnx_l_pdev, 'down');
+mysystem('ssh', $lnx_r_ssh, 'ip', 'link', 'set', $lnx_r_pdev, 'down');
+
 # configure given interface type
 if ($pseudodev eq 'bridge' || $pseudodev eq 'none') {
     if ($ipv4) {
