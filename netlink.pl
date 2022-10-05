@@ -390,18 +390,12 @@ sleep(3);
 # tcpbench tests
 
 if ($testmode{tcp4} || $testmode{tcp6}) {
-    my @cmd = ('ssh', $lnx_r_ssh, 'pkill -f tcpbench');
-    mysystem(@cmd);
-
-    @cmd = ('pkill -f tcpbench');
-    mysystem(@cmd);
-
     # requires echo 1 > /proc/sys/net/ipv6/bindv6only
-    @cmd = ('ssh', '-f', $lnx_r_ssh, 'tcpbench', '-s', '-r0', '-S1000000');
+    my @cmd = ('ssh', '-f', $lnx_r_ssh, 'service', 'tcpbench', 'start');
     mysystem(@cmd)
 	and die "Start tcpbench server with '@cmd' failed: $?";
 
-    @cmd = ('tcpbench', '-s', '-r0', '-S1000000');
+    @cmd = ('rcctl', '-f', 'start', 'tcpbench');
     defined(my $pid = fork())
 	or die "Fork failed: $!";
     unless ($pid) {
@@ -742,13 +736,6 @@ foreach my $t (@tests) {
 
 chdir($netlinkdir)
     or die "Change directory to '$netlinkdir' failed: $!";
-
-# kill remote commands or ssh will hang forever
-if ($testmode{tcp4} || $testmode{tcp6}) {
-    my @sshcmd = ('ssh', $lnx_r_ssh, 'pkill', 'tcpbench');
-    mysystem(@sshcmd);
-    mysystem('pkill', 'tcpbench');
-}
 
 # create a tgz file with all log files
 my @paxcmd = ('pax', '-x', 'cpio', '-wzf', "$netlinkdir/test.log.tgz");
