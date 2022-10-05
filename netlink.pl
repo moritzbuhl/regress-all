@@ -188,6 +188,11 @@ mysystem('ssh', $lnx_r_ssh, 'ip', 'addr', 'del', $lnx_r_net, 'dev',
 mysystem('ssh', $lnx_r_ssh, 'ip', 'addr', 'del', $lnx_r_net6, 'dev',
     $lnx_r_if);
 
+mysystem('ssh', $lnx_l_ssh, 'ip', 'route', 'del', $obsd_r_net);
+mysystem('ssh', $lnx_r_ssh, 'ip', 'route', 'del', $obsd_l_net);
+mysystem('ssh', $lnx_l_ssh, 'ip', '-6', 'route', 'del', $obsd_r_net6);
+mysystem('ssh', $lnx_r_ssh, 'ip', '-6', 'route', 'del', $obsd_l_net6);
+
 # configure given interface type
 if ($pseudodev eq 'bridge' || $pseudodev eq 'none') {
     if ($ipv4) {
