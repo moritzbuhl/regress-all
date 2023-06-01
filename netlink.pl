@@ -29,7 +29,7 @@ use Netstat;
 
 my @allifaces = qw(em igc ix ixl);
 my @allmodifymodes = qw(lro nopf notso);
-my @allpseudos = qw(aggr bridge carp none trunk veb vlan);
+my @allpseudos = qw(bridge none trunk veb vlan);
 my @alltestmodes = sort qw(all fragment icmp ipopts pathmtu tcp udp);
 
 my %opts;
@@ -43,7 +43,7 @@ usage: netlink.pl [-v] [-c pseudo] [-e environment] [-i iface]
     -l index	interface index, default 0
     -m modify	modify mode: @allmodifymodes
     -r index	interface index, default 1
-    -t timeout	timeout for a single test, default 60 seconds
+    -t timeout	timeout for a single test, default 20 seconds
     -v		verbose
     test ...	test mode: @alltestmodes
 		appending 4 or 6 to a test restricts the IP version.
@@ -322,37 +322,33 @@ mysystem('chmod', '555', '/etc/rc.d/tcpbench');
 
 my $configure_linux = 1;
 
-if ($pseudo eq 'aggr') {
-    # XXX: multiple interfaces in one aggr
-    mysystem('ifconfig', 'aggr0', 'create');
-    mysystem('ifconfig', 'aggr1', 'create');
-
-    mysystem('ifconfig', $obsd_l_if, 'up');
-    mysystem('ifconfig', $obsd_r_if, 'up');
-    mysystem('ifconfig', 'aggr0', 'trunkport', $obsd_l_if);
-    mysystem('ifconfig', 'aggr1', 'trunkport', $obsd_r_if);
-
-    if ($ipv4) {
-	mysystem('ifconfig', 'aggr0', "${obsd_l_addr}/24");
-	mysystem('ifconfig', 'aggr1', "${obsd_r_addr}/24");
-    }
-    if ($ipv6) {
-	mysystem('ifconfig', 'aggr0', $obsd_l_addr6);
-	mysystem('ifconfig', 'aggr1', $obsd_r_addr6);
-    }
-
-    mysystem('ifconfig', 'aggr0', 'up');
-    mysystem('ifconfig', 'aggr1', 'up');
-} elsif ($pseudo eq 'bridge') {
+if ($pseudo eq 'bridge') {
     # XXX: vether
     mysystem('ifconfig', 'bridge0', 'create');
     mysystem('ifconfig', 'bridge0', 'add', $obsd_l_if);
     mysystem('ifconfig', 'bridge0', 'add', $obsd_r_if);
     mysystem('ifconfig', 'bridge0', 'up');
-} elsif ($pseudo eq 'carp') {
-    # XXX
 } elsif ($pseudo eq 'trunk') {
-    # XXX
+    # XXX: multiple interfaces
+    mysystem('ifconfig', 'trunk0', 'create');
+    mysystem('ifconfig', 'trunk1', 'create');
+
+    mysystem('ifconfig', $obsd_l_if, 'up');
+    mysystem('ifconfig', $obsd_r_if, 'up');
+    mysystem('ifconfig', 'trunk0', 'trunkport', $obsd_l_if);
+    mysystem('ifconfig', 'trunk1', 'trunkport', $obsd_r_if);
+
+    if ($ipv4) {
+	mysystem('ifconfig', 'trunk0', "${obsd_l_addr}/24");
+	mysystem('ifconfig', 'trunk1', "${obsd_r_addr}/24");
+    }
+    if ($ipv6) {
+	mysystem('ifconfig', 'trunk0', $obsd_l_addr6);
+	mysystem('ifconfig', 'trunk1', $obsd_r_addr6);
+    }
+
+    mysystem('ifconfig', 'trunk0', 'up');
+    mysystem('ifconfig', 'trunk1', 'up');
 } elsif ($pseudo eq 'veb') {
     mysystem('ifconfig', 'veb0', 'create');
     mysystem('ifconfig', 'vport0', 'create');
